@@ -39,8 +39,10 @@ public class Main {
         
         options.addOption("h", "help", false, "Prints help message");
         options.addOption("p", "parse", false, "Process the file to detect joins");
-        options.addOption("i", "input", true, "Input sql log file");
-        options.addOption("o", "output", true, "Override output file");
+        options.addOption("i", "input", true, "Input sql log file path");
+		options.addOption("w", "workers", true, "Number of worker threads, default is 4");
+        options.addOption("t", "tenant", true, "Tenant name, default is null");
+		options.addOption("d", "database", true, "Database name, default is null");
 
         /**
          * CLI Parser
@@ -52,9 +54,21 @@ public class Main {
 	        Application app = new Application();
 
 	        if (line.hasOption("i")) { app.overrideInputFile(line.getOptionValue("i")); }
-	        if (line.hasOption("o")) { app.overrideOutputFile(line.getOptionValue("o")); }
+			if (line.hasOption("w")) { app.overrideWorkers(line.getOptionValue("w")); }
+			if (line.hasOption("t")) { app.overrideTenant(line.getOptionValue("t")); }
+			if (line.hasOption("d")) { app.overrideDatabase(line.getOptionValue("d")); }
 
-	        
+
+			// Handle errors
+			if (line.hasOption("i") == false) {
+				showError("Input file not defined");
+				return;
+			}
+			// Handle errors
+			if (line.hasOption("p") == false) {
+				showError("Command not defined");
+				return;
+			}
 
 	        // Process help
 	        if (line.hasOption("h")) {
@@ -71,8 +85,9 @@ public class Main {
 	        	return;
 	        }
 
-	        
-	        throw new UnrecognizedOptionException("No argument was provided");
+			// Show help
+			throw new UnrecognizedOptionException("Command not specified");
+
 
         } catch (UnrecognizedOptionException ex){
         	showBanner(options.getOption("h"));
@@ -90,10 +105,27 @@ public class Main {
 	 */
 	private static void showBanner(Option option) {
 		try {
+			System.out.println();
 			System.out.println("======================================================");
 			System.out.println("==  dxplore.io SQL utils package, join-parser V 2.1"   );
 			System.out.println("==  " + option.getDescription());
 			System.out.println("======================================================");
+		} catch (Exception ex) {
+			System.out.println(ex.getMessage());
+		}
+	}
+
+	/**
+	 * Show bsample command
+	 */
+	private static void showError(String error) {
+		try {
+			System.out.println();
+			System.out.println("ERROR: " + error);
+			System.out.println();
+			System.out.println("Usage sample:");
+			System.out.println("java -jar ./join-parset-<version>.jar -i <input_file> -t <tenant> -d <database> -w <num_of_workers> -p"   );
+			System.out.println();
 		} catch (Exception ex) {
 			System.out.println(ex.getMessage());
 		}

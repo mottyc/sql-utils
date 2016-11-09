@@ -551,6 +551,10 @@ query_specification
       (HAVING having=search_condition)?
     ;
 
+//where_clause
+//    : WHERE (current_of_clause | condition_wrapper)
+//    ;
+
 // https://msdn.microsoft.com/en-us/library/ms188385.aspx
 order_by_clause
     : ORDER BY order_by_expression (',' order_by_expression)*

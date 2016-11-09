@@ -4,14 +4,24 @@
 
 package com.dxplore.utils;
 
-import java.io.IOException;
+import java.io.*;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.stream.Stream;
 
+import com.dxplore.model.CompoundJoinEntity;
+import com.dxplore.model.StatementEntity;
+import com.dxplore.plsql.plsqlLexer;
+import com.dxplore.plsql.plsqlParser;
+import org.antlr.v4.runtime.ANTLRInputStream;
+import org.antlr.v4.runtime.CommonTokenStream;
+
+import org.apache.commons.io.input.ReaderInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,123 +43,134 @@ public class Application {
 	// Configuration constants
 	public static String INPUT_FILE = "";
 	public static String OUTPUT_FILE = "";
+	public static String ERROR_FILE = "";
+
+	public static String TENANT_NAME = "";
+	public static String DATABASE_NAME = "";
+
+	public static int WORKERS = 4;
 
 	// Application Singleton 
 	private static Application instance = null;
 	public static Application getInstance() { return instance; }
 
-	// PRIVATE
-	private Path fFilePath;
+	// Model manager Singleton
+	private static ModelManager model = null;
+	public static ModelManager getModel() { return model; }
+
+	// Statements counter
+	private int counter = 0;
+
+	// Encoding
 	private final static Charset ENCODING = StandardCharsets.UTF_8;
 
 	/**
 	 * Default constructor
 	 */
 	public Application() { 		
-		// Set singleton
+		// Set singletons
 		Application.instance = this;
+		Application.model = new ModelManager();
 	}
-	
+
 	/**
-	 * Read and Process the sql log file
+	 * Read and process the SQL in a string
+	 */
+	public void processString(String sql) {
+		try (BufferedWriter outWriter = new BufferedWriter(new OutputStreamWriter(System.out));
+			 BufferedWriter errWriter = new BufferedWriter(new OutputStreamWriter(System.err))) {
+
+			// Process string
+			FileProcessor processor = new FileProcessor();
+			processor.processStatement(sql, 1);
+
+			// Write output
+			//this.writeOutput(outWriter, errWriter);
+
+		} catch (Exception ex) {
+			logger.error(ex.getMessage());
+		}
+
+	}
+
+	/**
+	 * Read and Process the SQL in a log file
 	 */
 	public void processFile() {
-		
+		FileProcessor processor = new FileProcessor();
+		processor.process();
+
+		Path out = Paths.get(Application.OUTPUT_FILE);
+		Path err = Paths.get(Application.ERROR_FILE);
+
 		try {
-			logger.info("Starting SQL processing");
-			
-			// Mark start time
-			long start = System.currentTimeMillis();
+			try (BufferedWriter outWriter = Files.newBufferedWriter(out);
+				 BufferedWriter errWriter = Files.newBufferedWriter(err)) {
 
-			// Parse the file line by line
-			this.fFilePath = Paths.get(Application.INPUT_FILE);
-			this.processLineByLine();
-
-			// Mark end time
-			long end = System.currentTimeMillis();
-			
-
-
-			logger.info(String.format("file process completed within %d milliseconds.", (end-start)));
-
-		} catch(Exception ex) {
-			logger.error("Error running the application", ex);
-		}
-	}
-
-
-	/**
-	 * Process the file line by line
-	 * @throws IOException
-	 */
-	private void processLineByLine() throws IOException {
-		String prev = "";
-		try (Scanner scanner =  new Scanner(this.fFilePath, ENCODING.name())){
-			while (scanner.hasNextLine()) {
-				prev = buildStatement(scanner.nextLine().toLowerCase().trim(), prev);
+				// Write output
+				this.writeOutput(outWriter, errWriter);
 			}
-			// Process the last statement
-			this.processStatement(prev);
-		}
-	}
-
-	/**
-	 * Build complete SQL statements from lines
-	 * @param line
-	 * @param prev
-	 * @return
-	 */
-	private String buildStatement(String line, String prev) {
-		if (line.startsWith("select ")) {
-			this.processStatement(prev);
-			return line;
-		} else {
-			return String.format("%s %s", prev, line).trim();
-		}
-	}
-
-
-	/**
-	 * Process full SQL statement
-	 * @param stat
-	 */
-	private void processStatement(String stat) {
-		logger.info(stat);
-	}
-	
-	/**
-	 * If input file provided, override default
-	 * @param src
-	 */
-	public void overrideInputFile(String src) {
-		if ((src != null) && (!src.isEmpty())) {
-			Application.INPUT_FILE = src;
-		}
-	}
-	
-	/**
-	 * If output file provided, override default
-	 * @param src
-	 */
-	public void overrideOutputFile(String src) {
-		if ((src != null) && (!src.isEmpty())) {
-			Application.OUTPUT_FILE = src;
-		}
-	}
-
-
-	/**
-	 * Get folder path and remove backslash suffix if needed
-	 * @param value
-	 * @return
-	 */
-	private String getFolderPath(String value) {
-		try {
-			return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
 		} catch (Exception ex) {
-			return value;
+			logger.error("Error writing output: " + ex.getMessage());
 		}
 	}
 
 
+
+	/**
+	 * Write the output to the streams
+	 */
+	private void writeOutput(BufferedWriter outWriter, BufferedWriter errWriter) {
+		try {
+			for (CompoundJoinEntity cje : this.getModel().getJoins().values()) {
+
+				if (cje.hasError()) {
+					errWriter.write(cje.getError());
+					errWriter.newLine();
+				} else {
+					outWriter.write(cje.getText(Application.TENANT_NAME, Application.DATABASE_NAME));
+					outWriter.newLine();
+				}
+			}
+		} catch (Exception ex) {
+			logger.error("Error writing output: " + ex.getMessage());
+		}
+	}
+
+	/**
+	 * If input file provided (-i), override default value
+	 * @param value Provided value
+	 */
+	public void overrideInputFile(String value) {
+		if ((value != null) && (!value.isEmpty())) {
+			Application.INPUT_FILE = value;
+			Application.OUTPUT_FILE = String.format("%s.joins", value);
+			Application.ERROR_FILE = String.format("%s.err", value);
+		}
+	}
+
+	/**
+	 * If tenant name is provided (-t), override default value
+	 * @param value Provided value
+	 */
+	public void overrideTenant(String value) {
+		Application.TENANT_NAME = value;
+	}
+
+	/**
+	 * If database name is provided (-d), override default value
+	 * @param value Provided value
+	 */
+	public void overrideDatabase(String value) {
+		Application.DATABASE_NAME = value;
+	}
+
+	/**
+	 * If number of workers is provided (-w), override default value
+	 * @param value
+	 */
+	public void overrideWorkers(String value) {
+		int workers = Integer.parseInt(value);
+		Application.WORKERS = workers;
+	}
 }
