@@ -4,9 +4,6 @@
 
 package com.dxplore.utils;
 
-import com.dxplore.model.CompoundJoinEntity;
-import com.dxplore.plsql.plsqlLexer;
-import com.dxplore.plsql.plsqlParser;
 import com.dxplore.tsql.tsqlLexer;
 import com.dxplore.tsql.tsqlParser;
 import org.antlr.v4.runtime.ANTLRInputStream;
@@ -14,15 +11,12 @@ import org.antlr.v4.runtime.CommonTokenStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.StringJoiner;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.LongAdder;
-import java.util.stream.IntStream;
-import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
 /**
